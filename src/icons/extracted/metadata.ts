@@ -268,6 +268,13 @@ export const iconMetadata: Record<string, IconMetadata> = {
     keywords: ["openclaw", "lobster", "claw"],
     defaultColor: "#ff4f40",
   },
+  hermes: {
+    name: "hermes",
+    displayName: "Hermes",
+    category: "ai-provider",
+    keywords: ["hermes", "nous", "messenger"],
+    defaultColor: "#f59e0b",
+  },
   packycode: {
     name: "packycode",
     displayName: "PackyCode",

@@ -39,6 +39,7 @@ import {
 import { checkAllEnvConflicts, checkEnvConflicts } from "@/lib/api/env";
 import { useProviderActions } from "@/hooks/useProviderActions";
 import { openclawKeys, useOpenClawHealth } from "@/hooks/useOpenClaw";
+import { hermesKeys, useHermesHealth } from "@/hooks/useHermes";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { useAutoCompact } from "@/hooks/useAutoCompact";
 import { useLastValidValue } from "@/hooks/useLastValidValue";
@@ -82,6 +83,10 @@ import EnvPanel from "@/components/openclaw/EnvPanel";
 import ToolsPanel from "@/components/openclaw/ToolsPanel";
 import AgentsDefaultsPanel from "@/components/openclaw/AgentsDefaultsPanel";
 import OpenClawHealthBanner from "@/components/openclaw/OpenClawHealthBanner";
+import HermesEnvPanel from "@/components/hermes/EnvPanel";
+import HermesToolsPanel from "@/components/hermes/ToolsPanel";
+import HermesAgentsDefaultsPanel from "@/components/hermes/AgentsDefaultsPanel";
+import HermesHealthBanner from "@/components/hermes/HermesHealthBanner";
 
 type View =
   | "providers"
@@ -96,7 +101,10 @@ type View =
   | "workspace"
   | "openclawEnv"
   | "openclawTools"
-  | "openclawAgents";
+  | "openclawAgents"
+  | "hermesEnv"
+  | "hermesTools"
+  | "hermesAgents";
 
 interface WebDavSyncStatusUpdatedPayload {
   source?: string;
@@ -114,6 +122,7 @@ const VALID_APPS: AppId[] = [
   "gemini",
   "opencode",
   "openclaw",
+  "hermes",
 ];
 
 const getInitialApp = (): AppId => {
@@ -139,6 +148,9 @@ const VALID_VIEWS: View[] = [
   "openclawEnv",
   "openclawTools",
   "openclawAgents",
+  "hermesEnv",
+  "hermesTools",
+  "hermesAgents",
 ];
 
 const getInitialView = (): View => {
@@ -174,6 +186,7 @@ function App() {
     gemini: true,
     opencode: true,
     openclaw: true,
+    hermes: true,
   };
 
   const getFirstVisibleApp = (): AppId => {
@@ -182,6 +195,7 @@ function App() {
     if (visibleApps.gemini) return "gemini";
     if (visibleApps.opencode) return "opencode";
     if (visibleApps.openclaw) return "openclaw";
+    if (visibleApps.hermes) return "hermes";
     return "claude"; // fallback
   };
 
@@ -199,6 +213,7 @@ function App() {
       activeApp !== "codex" &&
       activeApp !== "opencode" &&
       activeApp !== "openclaw" &&
+      activeApp !== "hermes" &&
       activeApp !== "gemini"
     ) {
       setCurrentView("providers");
@@ -255,12 +270,23 @@ function App() {
       currentView === "openclawAgents");
   const { data: openclawHealthWarnings = [] } =
     useOpenClawHealth(isOpenClawView);
+  const isHermesView =
+    activeApp === "hermes" &&
+    (currentView === "providers" ||
+      currentView === "workspace" ||
+      currentView === "sessions" ||
+      currentView === "hermesEnv" ||
+      currentView === "hermesTools" ||
+      currentView === "hermesAgents");
+  const { data: hermesHealthWarnings = [] } =
+    useHermesHealth(isHermesView);
   const hasSkillsSupport = true;
   const hasSessionSupport =
     activeApp === "claude" ||
     activeApp === "codex" ||
     activeApp === "opencode" ||
     activeApp === "openclaw" ||
+    activeApp === "hermes" ||
     activeApp === "gemini";
 
   const {
@@ -654,6 +680,13 @@ function App() {
         await queryClient.invalidateQueries({
           queryKey: openclawKeys.health,
         });
+      } else if (activeApp === "hermes") {
+        await queryClient.invalidateQueries({
+          queryKey: hermesKeys.liveProviderIds,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: hermesKeys.health,
+        });
       }
       toast.success(
         t("notifications.removeFromConfigSuccess", {
@@ -704,19 +737,25 @@ function App() {
       iconColor: provider.iconColor,
     };
 
-    if (activeApp === "opencode" || activeApp === "openclaw") {
+    if (activeApp === "opencode" || activeApp === "openclaw" || activeApp === "hermes") {
       let liveProviderIds: string[] = [];
       try {
-        liveProviderIds =
-          activeApp === "opencode"
-            ? await queryClient.ensureQueryData({
-                queryKey: ["opencodeLiveProviderIds"],
-                queryFn: () => providersApi.getOpenCodeLiveProviderIds(),
-              })
-            : await queryClient.ensureQueryData({
-                queryKey: openclawKeys.liveProviderIds,
-                queryFn: () => providersApi.getOpenClawLiveProviderIds(),
-              });
+        if (activeApp === "opencode") {
+          liveProviderIds = await queryClient.ensureQueryData({
+            queryKey: ["opencodeLiveProviderIds"],
+            queryFn: () => providersApi.getOpenCodeLiveProviderIds(),
+          });
+        } else if (activeApp === "openclaw") {
+          liveProviderIds = await queryClient.ensureQueryData({
+            queryKey: openclawKeys.liveProviderIds,
+            queryFn: () => providersApi.getOpenClawLiveProviderIds(),
+          });
+        } else if (activeApp === "hermes") {
+          liveProviderIds = await queryClient.ensureQueryData({
+            queryKey: hermesKeys.liveProviderIds,
+            queryFn: () => providersApi.getHermesLiveProviderIds(),
+          });
+        }
       } catch (error) {
         console.error(
           "[App] Failed to load live provider IDs for duplication",
@@ -882,14 +921,14 @@ function App() {
             <UnifiedSkillsPanel
               ref={unifiedSkillsPanelRef}
               onOpenDiscovery={() => setCurrentView("skillsDiscovery")}
-              currentApp={activeApp === "openclaw" ? "claude" : activeApp}
+              currentApp={activeApp === "openclaw" || activeApp === "hermes" ? "claude" : activeApp}
             />
           );
         case "skillsDiscovery":
           return (
             <SkillsPage
               ref={skillsPageRef}
-              initialApp={activeApp === "openclaw" ? "claude" : activeApp}
+              initialApp={activeApp === "openclaw" || activeApp === "hermes" ? "claude" : activeApp}
             />
           );
         case "mcp":
@@ -920,6 +959,12 @@ function App() {
           return <ToolsPanel />;
         case "openclawAgents":
           return <AgentsDefaultsPanel />;
+        case "hermesEnv":
+          return <HermesEnvPanel />;
+        case "hermesTools":
+          return <HermesToolsPanel />;
+        case "hermesAgents":
+          return <HermesAgentsDefaultsPanel />;
         default:
           return (
             <div className="px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -951,7 +996,7 @@ function App() {
                         setConfirmAction({ provider, action: "delete" })
                       }
                       onRemoveFromConfig={
-                        activeApp === "opencode" || activeApp === "openclaw"
+                        activeApp === "opencode" || activeApp === "openclaw" || activeApp === "hermes"
                           ? (provider) =>
                               setConfirmAction({ provider, action: "remove" })
                           : undefined
@@ -972,7 +1017,7 @@ function App() {
                       }
                       onCreate={() => setIsAddOpen(true)}
                       onSetAsDefault={
-                        activeApp === "openclaw" ? setAsDefaultModel : undefined
+                        activeApp === "openclaw" || activeApp === "hermes" ? setAsDefaultModel : undefined
                       }
                     />
                   </motion.div>
@@ -1133,6 +1178,10 @@ function App() {
                   {currentView === "openclawTools" && t("openclaw.tools.title")}
                   {currentView === "openclawAgents" &&
                     t("openclaw.agents.title")}
+                  {currentView === "hermesEnv" && t("hermes.env.title")}
+                  {currentView === "hermesTools" && t("hermes.tools.title")}
+                  {currentView === "hermesAgents" &&
+                    t("hermes.agents.title")}
                 </h1>
               </div>
             ) : (
@@ -1193,7 +1242,8 @@ function App() {
           <div className="flex flex-1 min-w-0 items-center justify-end gap-1.5">
             {currentView === "providers" &&
               activeApp !== "opencode" &&
-              activeApp !== "openclaw" && (
+              activeApp !== "openclaw" &&
+              activeApp !== "hermes" && (
                 <div
                   className="flex shrink-0 items-center gap-1.5"
                   style={{ WebkitAppRegion: "no-drag" } as any}
@@ -1328,7 +1378,9 @@ function App() {
                       <AnimatePresence mode="wait">
                         <motion.div
                           key={
-                            activeApp === "openclaw" ? "openclaw" : "default"
+                            activeApp === "openclaw" || activeApp === "hermes" 
+                              ? activeApp 
+                              : "default"
                           }
                           className="flex items-center gap-1"
                           initial={{ opacity: 0 }}
@@ -1371,6 +1423,54 @@ function App() {
                                 onClick={() => setCurrentView("openclawAgents")}
                                 className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
                                 title={t("openclaw.agents.title")}
+                              >
+                                <Cpu className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setCurrentView("sessions")}
+                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("sessionManager.title")}
+                              >
+                                <History className="w-4 h-4" />
+                              </Button>
+                            </>
+                          ) : activeApp === "hermes" ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setCurrentView("workspace")}
+                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("workspace.manage")}
+                              >
+                                <FolderOpen className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setCurrentView("hermesEnv")}
+                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("hermes.env.title")}
+                              >
+                                <KeyRound className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setCurrentView("hermesTools")}
+                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("hermes.tools.title")}
+                              >
+                                <Shield className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setCurrentView("hermesAgents")}
+                                className="text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                                title={t("hermes.agents.title")}
                               >
                                 <Cpu className="w-4 h-4" />
                               </Button>
@@ -1458,6 +1558,9 @@ function App() {
       <main className="flex-1 min-h-0 flex flex-col overflow-y-auto animate-fade-in">
         {isOpenClawView && openclawHealthWarnings.length > 0 && (
           <OpenClawHealthBanner warnings={openclawHealthWarnings} />
+        )}
+        {isHermesView && hermesHealthWarnings.length > 0 && (
+          <HermesHealthBanner warnings={hermesHealthWarnings} />
         )}
         {renderContent()}
       </main>

@@ -19,6 +19,7 @@ import { codexProviderPresets } from "@/config/codexProviderPresets";
 import { geminiProviderPresets } from "@/config/geminiProviderPresets";
 import { extractCodexBaseUrl } from "@/utils/providerConfigUtils";
 import type { OpenClawSuggestedDefaults } from "@/config/openclawProviderPresets";
+import type { HermesSuggestedDefaults } from "@/config/hermesProviderPresets";
 import type { UniversalProviderPreset } from "@/config/universalProviderPresets";
 
 interface AddProviderDialogProps {
@@ -28,7 +29,7 @@ interface AddProviderDialogProps {
   onSubmit: (
     provider: Omit<Provider, "id"> & {
       providerKey?: string;
-      suggestedDefaults?: OpenClawSuggestedDefaults;
+      suggestedDefaults?: OpenClawSuggestedDefaults | HermesSuggestedDefaults;
     },
   ) => Promise<void> | void;
 }
@@ -40,8 +41,8 @@ export function AddProviderDialog({
   onSubmit,
 }: AddProviderDialogProps) {
   const { t } = useTranslation();
-  // OpenCode and OpenClaw don't support universal providers
-  const showUniversalTab = appId !== "opencode" && appId !== "openclaw";
+  // OpenCode, OpenClaw, and Hermes don't support universal providers
+  const showUniversalTab = appId !== "opencode" && appId !== "openclaw" && appId !== "hermes";
   const [activeTab, setActiveTab] = useState<"app-specific" | "universal">(
     "app-specific",
   );
@@ -92,7 +93,7 @@ export function AddProviderDialog({
       // 构造基础提交数据
       const providerData: Omit<Provider, "id"> & {
         providerKey?: string;
-        suggestedDefaults?: OpenClawSuggestedDefaults;
+        suggestedDefaults?: OpenClawSuggestedDefaults | HermesSuggestedDefaults;
       } = {
         name: values.name.trim(),
         notes: values.notes?.trim() || undefined,
@@ -104,9 +105,9 @@ export function AddProviderDialog({
         ...(values.meta ? { meta: values.meta } : {}),
       };
 
-      // OpenCode/OpenClaw: pass providerKey for ID generation
+      // OpenCode/OpenClaw/Hermes: pass providerKey for ID generation
       if (
-        (appId === "opencode" || appId === "openclaw") &&
+        (appId === "opencode" || appId === "openclaw" || appId === "hermes") &&
         values.providerKey
       ) {
         providerData.providerKey = values.providerKey;
@@ -203,6 +204,11 @@ export function AddProviderDialog({
           if (parsedConfig.baseUrl) {
             addUrl(parsedConfig.baseUrl as string);
           }
+        } else if (appId === "hermes") {
+          // Hermes uses baseUrl directly
+          if (parsedConfig.baseUrl) {
+            addUrl(parsedConfig.baseUrl as string);
+          }
         }
 
         const urls = Array.from(urlSet);
@@ -226,6 +232,11 @@ export function AddProviderDialog({
 
       // OpenClaw: pass suggestedDefaults for model registration
       if (appId === "openclaw" && values.suggestedDefaults) {
+        providerData.suggestedDefaults = values.suggestedDefaults;
+      }
+
+      // Hermes: pass suggestedDefaults for model registration
+      if (appId === "hermes" && values.suggestedDefaults) {
         providerData.suggestedDefaults = values.suggestedDefaults;
       }
 

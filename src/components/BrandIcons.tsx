@@ -61,6 +61,19 @@ export function OpenClawIcon({ size = 16, className = "" }: IconProps) {
   );
 }
 
+export function HermesIcon({ size = 16, className = "" }: IconProps) {
+  return (
+    <img
+      src={OpenClawSvg}
+      width={size}
+      height={size}
+      className={className}
+      alt="Hermes"
+      loading="lazy"
+    />
+  );
+}
+
 // MCP icon uses inline SVG to support currentColor for hover effects
 export function McpIcon({ size = 16, className = "" }: IconProps) {
   return (

@@ -62,6 +62,7 @@ type ProviderFilter =
   | "claude"
   | "opencode"
   | "openclaw"
+  | "hermes"
   | "gemini";
 
 export function SessionManagerPage({ appId }: { appId: string }) {
@@ -654,6 +655,16 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                   size={14}
                                 />
                                 <span>OpenClaw</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="hermes">
+                              <div className="flex items-center gap-2">
+                                <ProviderIcon
+                                  icon="hermes"
+                                  name="hermes"
+                                  size={14}
+                                />
+                                <span>Hermes</span>
                               </div>
                             </SelectItem>
                             <SelectItem value="gemini">

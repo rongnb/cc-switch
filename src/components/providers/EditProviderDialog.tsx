@@ -8,7 +8,7 @@ import {
   ProviderForm,
   type ProviderFormValues,
 } from "@/components/providers/forms/ProviderForm";
-import { openclawApi, providersApi, vscodeApi, type AppId } from "@/lib/api";
+import { openclawApi, hermesApi, providersApi, vscodeApi, type AppId } from "@/lib/api";
 
 interface EditProviderDialogProps {
   open: boolean;
@@ -80,6 +80,26 @@ export function EditProviderDialog({
       if (appId === "openclaw") {
         try {
           const live = await openclawApi.getLiveProvider(provider.id);
+          if (!cancelled && live && typeof live === "object") {
+            setLiveSettings(live);
+          } else if (!cancelled) {
+            setLiveSettings(null);
+          }
+        } catch {
+          if (!cancelled) {
+            setLiveSettings(null);
+          }
+        } finally {
+          if (!cancelled) {
+            setHasLoadedLive(true);
+          }
+        }
+        return;
+      }
+
+      if (appId === "hermes") {
+        try {
+          const live = await hermesApi.getLiveProvider(provider.id);
           if (!cancelled && live && typeof live === "object") {
             setLiveSettings(live);
           } else if (!cancelled) {
@@ -169,7 +189,7 @@ export function EditProviderDialog({
         unknown
       >;
       const nextProviderId =
-        (appId === "opencode" || appId === "openclaw") &&
+        (appId === "opencode" || appId === "openclaw" || appId === "hermes") &&
         values.providerKey?.trim()
           ? values.providerKey.trim()
           : provider.id;

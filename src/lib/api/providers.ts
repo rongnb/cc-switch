@@ -143,6 +143,21 @@ export const providersApi = {
   async importOpenClawFromLive(): Promise<number> {
     return await invoke("import_openclaw_providers_from_live");
   },
+
+  /**
+   * 获取 Hermes live 配置中的供应商 IDs
+   */
+  async getHermesLiveProviderIds(): Promise<string[]> {
+    return await invoke("get_hermes_live_provider_ids");
+  },
+
+  /**
+   * 从 Hermes live 配置导入供应商到数据库
+   * Hermes 特有功能：由于累加模式，用户可能已在 hermes.json 中配置供应商
+   */
+  async importHermesFromLive(): Promise<number> {
+    return await invoke("import_hermes_providers_from_live");
+  },
 };
 
 // ============================================================================

@@ -2,14 +2,17 @@ import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { providersApi, settingsApi, openclawApi, type AppId } from "@/lib/api";
+import { providersApi, settingsApi, openclawApi, hermesApi, type AppId } from "@/lib/api";
 import type {
   Provider,
   UsageScript,
   OpenClawProviderConfig,
   OpenClawDefaultModel,
+  HermesProviderConfig,
+  HermesDefaultModel,
 } from "@/types";
 import type { OpenClawSuggestedDefaults } from "@/config/openclawProviderPresets";
+import type { HermesSuggestedDefaults } from "@/config/hermesProviderPresets";
 import {
   useAddProviderMutation,
   useUpdateProviderMutation,
@@ -18,6 +21,7 @@ import {
 } from "@/lib/query";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { openclawKeys } from "@/hooks/useOpenClaw";
+import { hermesKeys } from "@/hooks/useHermes";
 
 /**
  * Hook for managing provider actions (add, update, delete, switch)
@@ -68,7 +72,7 @@ export function useProviderActions(
     async (
       provider: Omit<Provider, "id"> & {
         providerKey?: string;
-        suggestedDefaults?: OpenClawSuggestedDefaults;
+        suggestedDefaults?: OpenClawSuggestedDefaults | HermesSuggestedDefaults;
         addToLive?: boolean;
       },
     ) => {
@@ -76,7 +80,7 @@ export function useProviderActions(
 
       // OpenClaw: register models to allowlist after adding provider
       if (activeApp === "openclaw" && provider.suggestedDefaults) {
-        const { model, modelCatalog } = provider.suggestedDefaults;
+        const { model, modelCatalog } = provider.suggestedDefaults as OpenClawSuggestedDefaults;
         let modelsRegistered = false;
 
         try {
@@ -115,6 +119,52 @@ export function useProviderActions(
           // Log warning but don't block main flow - provider config is already saved
           console.warn(
             "[OpenClaw] Failed to register models to allowlist:",
+            error,
+          );
+        }
+      }
+
+      // Hermes: register models to allowlist after adding provider
+      if (activeApp === "hermes" && provider.suggestedDefaults) {
+        const { model, modelCatalog } = provider.suggestedDefaults as HermesSuggestedDefaults;
+        let modelsRegistered = false;
+
+        try {
+          // 1. Merge model catalog (allowlist)
+          if (modelCatalog && Object.keys(modelCatalog).length > 0) {
+            const existingCatalog = (await hermesApi.getModelCatalog()) || {};
+            const mergedCatalog = { ...existingCatalog, ...modelCatalog };
+            await hermesApi.setModelCatalog(mergedCatalog);
+            await queryClient.invalidateQueries({
+              queryKey: hermesKeys.health,
+            });
+            modelsRegistered = true;
+          }
+
+          // 2. Set default model (only if not already set)
+          if (model) {
+            const existingDefault = await hermesApi.getDefaultModel();
+            if (!existingDefault?.primary) {
+              await hermesApi.setDefaultModel(model);
+              await queryClient.invalidateQueries({
+                queryKey: hermesKeys.health,
+              });
+            }
+          }
+
+          // Show success toast if models were registered
+          if (modelsRegistered) {
+            toast.success(
+              t("notifications.hermesModelsRegistered", {
+                defaultValue: "模型已注册到 /model 列表",
+              }),
+              { closeButton: true },
+            );
+          }
+        } catch (error) {
+          // Log warning but don't block main flow - provider config is already saved
+          console.warn(
+            "[Hermes] Failed to register models to allowlist:",
             error,
           );
         }
@@ -296,42 +346,82 @@ export function useProviderActions(
   // Set provider as default model (OpenClaw only)
   const setAsDefaultModel = useCallback(
     async (provider: Provider) => {
-      const config = provider.settingsConfig as OpenClawProviderConfig;
-      if (!config.models || config.models.length === 0) {
-        toast.error(
-          t("notifications.openclawNoModels", {
-            defaultValue: "该供应商没有配置模型",
-          }),
-        );
-        return;
-      }
+      if (activeApp === "openclaw") {
+        const config = provider.settingsConfig as OpenClawProviderConfig;
+        if (!config.models || config.models.length === 0) {
+          toast.error(
+            t("notifications.openclawNoModels", {
+              defaultValue: "该供应商没有配置模型",
+            }),
+          );
+          return;
+        }
 
-      const model: OpenClawDefaultModel = {
-        primary: `${provider.id}/${config.models[0].id}`,
-        fallbacks: config.models.slice(1).map((m) => `${provider.id}/${m.id}`),
-      };
+        const model: OpenClawDefaultModel = {
+          primary: `${provider.id}/${config.models[0].id}`,
+          fallbacks: config.models.slice(1).map((m) => `${provider.id}/${m.id}`),
+        };
 
-      try {
-        await openclawApi.setDefaultModel(model);
-        await queryClient.invalidateQueries({
-          queryKey: openclawKeys.defaultModel,
-        });
-        await queryClient.invalidateQueries({
-          queryKey: openclawKeys.health,
-        });
-        toast.success(
-          t("notifications.openclawDefaultModelSet", {
-            defaultValue: "已设为默认模型",
-          }),
-          { closeButton: true },
-        );
-      } catch (error) {
-        const detail =
-          extractErrorMessage(error) ||
-          t("notifications.openclawDefaultModelSetFailed", {
-            defaultValue: "设置默认模型失败",
+        try {
+          await openclawApi.setDefaultModel(model);
+          await queryClient.invalidateQueries({
+            queryKey: openclawKeys.defaultModel,
           });
-        toast.error(detail);
+          await queryClient.invalidateQueries({
+            queryKey: openclawKeys.health,
+          });
+          toast.success(
+            t("notifications.openclawDefaultModelSet", {
+              defaultValue: "已设为默认模型",
+            }),
+            { closeButton: true },
+          );
+        } catch (error) {
+          const detail =
+            extractErrorMessage(error) ||
+            t("notifications.openclawDefaultModelSetFailed", {
+              defaultValue: "设置默认模型失败",
+            });
+          toast.error(detail);
+        }
+      } else if (activeApp === "hermes") {
+        const config = provider.settingsConfig as HermesProviderConfig;
+        if (!config.models || config.models.length === 0) {
+          toast.error(
+            t("notifications.hermesNoModels", {
+              defaultValue: "该供应商没有配置模型",
+            }),
+          );
+          return;
+        }
+
+        const model: HermesDefaultModel = {
+          primary: `${provider.id}/${config.models[0].id}`,
+          fallbacks: config.models.slice(1).map((m) => `${provider.id}/${m.id}`),
+        };
+
+        try {
+          await hermesApi.setDefaultModel(model);
+          await queryClient.invalidateQueries({
+            queryKey: hermesKeys.defaultModel,
+          });
+          await queryClient.invalidateQueries({
+            queryKey: hermesKeys.health,
+          });
+          toast.success(
+            t("notifications.hermesDefaultModelSet", {
+              defaultValue: "已设为默认模型",
+            }),
+            { closeButton: true },
+          );
+        } catch (error) {
+          const detail =
+            extractErrorMessage(error) ||
+            t("notifications.hermesDefaultModelSetFailed", {
+              defaultValue: "设置默认模型失败",
+            });
+          toast.error(detail);
+        }
       }
     },
     [queryClient, t],

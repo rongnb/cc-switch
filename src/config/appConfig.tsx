@@ -4,6 +4,7 @@ import {
   ClaudeIcon,
   CodexIcon,
   GeminiIcon,
+  HermesIcon,
   OpenClawIcon,
 } from "@/components/BrandIcons";
 import { ProviderIcon } from "@/components/ProviderIcon";
@@ -21,9 +22,10 @@ export const APP_IDS: AppId[] = [
   "gemini",
   "opencode",
   "openclaw",
+  "hermes",
 ];
 
-/** App IDs shown in MCP & Skills panels (excludes OpenClaw) */
+/** App IDs shown in MCP & Skills panels (excludes OpenClaw and Hermes) */
 export const MCP_SKILLS_APP_IDS: AppId[] = [
   "claude",
   "codex",
@@ -78,5 +80,13 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
       "bg-rose-500/10 ring-1 ring-rose-500/20 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400",
     badgeClass:
       "bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20 border-0 gap-1.5",
+  },
+  hermes: {
+    label: "Hermes",
+    icon: <HermesIcon size={14} />,
+    activeClass:
+      "bg-amber-500/10 ring-1 ring-amber-500/20 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400",
+    badgeClass:
+      "bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 border-0 gap-1.5",
   },
 };

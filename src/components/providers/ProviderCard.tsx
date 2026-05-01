@@ -184,9 +184,9 @@ export function ProviderCard({
     provider.meta?.providerType === PROVIDER_TYPES.CODEX_OAUTH;
 
   // 获取用量数据以判断是否有多套餐
-  // 累加模式应用（OpenCode/OpenClaw）：使用 isInConfig 代替 isCurrent
+  // 累加模式应用（OpenCode/OpenClaw/Hermes）：使用 isInConfig 代替 isCurrent
   const shouldAutoQuery =
-    appId === "opencode" || appId === "openclaw" ? isInConfig : isCurrent;
+    appId === "opencode" || appId === "openclaw" || appId === "hermes" ? isInConfig : isCurrent;
   const autoQueryInterval = shouldAutoQuery
     ? provider.meta?.usage_script?.autoQueryInterval || 0
     : 0;
@@ -218,13 +218,13 @@ export function ProviderCard({
 
   // 判断是否是"当前使用中"的供应商
   // - OMO/OMO Slim 供应商：使用 isCurrent
-  // - OpenClaw：使用默认模型归属的 provider 作为当前项（蓝色边框）
+  // - OpenClaw/Hermes：使用默认模型归属的 provider 作为当前项（蓝色边框）
   // - OpenCode（非 OMO）：不存在"当前"概念，返回 false
   // - 故障转移模式：代理实际使用的供应商（activeProviderId）
   // - 普通模式：isCurrent
   const isActiveProvider = isAnyOmo
     ? isCurrent
-    : appId === "openclaw"
+    : appId === "openclaw" || appId === "hermes"
       ? Boolean(isDefaultModel)
       : appId === "opencode"
         ? false

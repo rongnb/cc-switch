@@ -178,6 +178,7 @@ export interface VisibleApps {
   gemini: boolean;
   opencode: boolean;
   openclaw: boolean;
+  hermes: boolean;
 }
 
 // WebDAV 同步状态
@@ -271,6 +272,8 @@ export interface Settings {
   opencodeConfigDir?: string;
   // 覆盖 OpenClaw 配置目录（可选）
   openclawConfigDir?: string;
+  // 覆盖 Hermes 配置目录（可选）
+  hermesConfigDir?: string;
 
   // ===== 当前供应商 ID（设备级）=====
   // 当前 Claude 供应商 ID（优先于数据库 is_current）
@@ -344,6 +347,7 @@ export interface McpApps {
   gemini: boolean;
   opencode: boolean;
   openclaw: boolean;
+  hermes: boolean;
 }
 
 // MCP 服务器条目（v3.7.0 统一结构）
@@ -503,6 +507,23 @@ export interface OpenClawModel {
   maxTokens?: number; // 最大输出 token 数
 }
 
+// Hermes 模型配置（mirroring OpenClaw structure）
+export interface HermesModel {
+  id: string;
+  name: string;
+  alias?: string;
+  reasoning?: boolean;
+  input?: string[];
+  cost?: {
+    input: number;
+    output: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  };
+  contextWindow?: number;
+  maxTokens?: number;
+}
+
 // OpenClaw 默认模型配置（agents.defaults.model）
 export interface OpenClawDefaultModel {
   primary: string;
@@ -558,4 +579,55 @@ export interface OpenClawToolsConfig {
   allow?: string[];
   deny?: string[];
   [key: string]: unknown; // preserve unknown fields
+}
+
+// Hermes types (mirroring OpenClaw structure)
+export interface HermesDefaultModel {
+  primary: string;
+  fallbacks?: string[];
+}
+
+export interface HermesModelCatalogEntry {
+  alias?: string;
+}
+
+export interface HermesHealthWarning {
+  code: string;
+  message: string;
+  path?: string;
+}
+
+export interface HermesWriteOutcome {
+  backupPath?: string;
+  warnings: HermesHealthWarning[];
+}
+
+export type HermesToolsProfile = "minimal" | "coding" | "messaging" | "full";
+
+export interface HermesProviderConfig {
+  baseUrl?: string;
+  apiKey?: string;
+  api?: string;
+  models?: HermesModel[];
+  headers?: Record<string, string>;
+  authHeader?: boolean;
+}
+
+export interface HermesAgentsDefaults {
+  model?: HermesDefaultModel;
+  models?: Record<string, HermesModelCatalogEntry>;
+  timeoutSeconds?: number;
+  timeout?: number;
+  [key: string]: unknown;
+}
+
+export interface HermesEnvConfig {
+  [key: string]: unknown;
+}
+
+export interface HermesToolsConfig {
+  profile?: HermesToolsProfile | string;
+  allow?: string[];
+  deny?: string[];
+  [key: string]: unknown;
 }
