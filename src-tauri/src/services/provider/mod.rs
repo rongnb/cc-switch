@@ -21,8 +21,9 @@ use crate::store::AppState;
 
 // Re-export sub-module functions for external access
 pub use live::{
-    import_default_config, import_openclaw_providers_from_live,
-    import_opencode_providers_from_live, read_live_settings, sync_current_to_live,
+    import_default_config, import_hermes_providers_from_live,
+    import_openclaw_providers_from_live, import_opencode_providers_from_live,
+    read_live_settings, sync_current_to_live,
 };
 
 // Internal re-exports (pub(crate))
@@ -35,7 +36,8 @@ pub(crate) use live::{
 
 // Internal re-exports
 use live::{
-    remove_openclaw_provider_from_live, remove_opencode_provider_from_live, write_gemini_live,
+    remove_hermes_provider_from_live, remove_openclaw_provider_from_live,
+    remove_opencode_provider_from_live, write_gemini_live,
 };
 use usage::validate_usage_script;
 
@@ -1282,6 +1284,7 @@ impl ProviderService {
                 match app_type {
                     AppType::OpenCode => remove_opencode_provider_from_live(id)?,
                     AppType::OpenClaw => remove_openclaw_provider_from_live(id)?,
+                    AppType::Hermes => remove_hermes_provider_from_live(id)?,
                     _ => {}
                 }
             }
@@ -1343,6 +1346,9 @@ impl ProviderService {
             }
             AppType::OpenClaw => {
                 remove_openclaw_provider_from_live(id)?;
+            }
+            AppType::Hermes => {
+                remove_hermes_provider_from_live(id)?;
             }
             _ => {
                 return Err(AppError::Message(format!(
@@ -1532,6 +1538,7 @@ impl ProviderService {
                 let rollback_result = match app_type {
                     AppType::OpenCode => remove_opencode_provider_from_live(&provider.id),
                     AppType::OpenClaw => remove_openclaw_provider_from_live(&provider.id),
+                    AppType::Hermes => remove_hermes_provider_from_live(&provider.id),
                     _ => Ok(()),
                 };
 
@@ -1708,6 +1715,7 @@ impl ProviderService {
             AppType::Gemini => Self::extract_gemini_common_config(&provider.settings_config),
             AppType::OpenCode => Self::extract_opencode_common_config(&provider.settings_config),
             AppType::OpenClaw => Self::extract_openclaw_common_config(&provider.settings_config),
+            AppType::Hermes => Self::extract_hermes_common_config(&provider.settings_config),
         }
     }
 
@@ -1722,6 +1730,7 @@ impl ProviderService {
             AppType::Gemini => Self::extract_gemini_common_config(settings_config),
             AppType::OpenCode => Self::extract_opencode_common_config(settings_config),
             AppType::OpenClaw => Self::extract_openclaw_common_config(settings_config),
+            AppType::Hermes => Self::extract_hermes_common_config(settings_config),
         }
     }
 
@@ -1881,6 +1890,26 @@ impl ProviderService {
     /// Extract common config for OpenClaw (JSON format)
     fn extract_openclaw_common_config(settings: &Value) -> Result<String, AppError> {
         // OpenClaw uses a different config structure with baseUrl, apiKey, api, models
+        // For common config, we exclude provider-specific fields like apiKey
+        let mut config = settings.clone();
+
+        // Remove provider-specific fields
+        if let Some(obj) = config.as_object_mut() {
+            obj.remove("apiKey");
+            obj.remove("baseUrl");
+            // Keep api and models as they might be common
+        }
+
+        if config.is_null() || (config.is_object() && config.as_object().unwrap().is_empty()) {
+            return Ok("{}".to_string());
+        }
+
+        serde_json::to_string_pretty(&config)
+            .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
+    }
+
+    fn extract_hermes_common_config(settings: &Value) -> Result<String, AppError> {
+        // Hermes uses a different config structure with baseUrl, apiKey, api, models
         // For common config, we exclude provider-specific fields like apiKey
         let mut config = settings.clone();
 
@@ -2087,6 +2116,17 @@ impl ProviderService {
                     ));
                 }
             }
+            AppType::Hermes => {
+                // Hermes uses config structure: { baseUrl, apiKey, api, models }
+                // Basic validation - must be an object
+                if !provider.settings_config.is_object() {
+                    return Err(AppError::localized(
+                        "provider.hermes.settings.not_object",
+                        "Hermes 配置必须是 JSON 对象",
+                        "Hermes configuration must be a JSON object",
+                    ));
+                }
+            }
         }
 
         // Validate and clean UsageScript configuration (common for all app types)
@@ -2267,6 +2307,30 @@ impl ProviderService {
                     .ok_or_else(|| {
                         AppError::localized(
                             "provider.openclaw.api_key.missing",
+                            "缺少 API Key",
+                            "API key is missing",
+                        )
+                    })?
+                    .to_string();
+
+                let base_url = provider
+                    .settings_config
+                    .get("baseUrl")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                Ok((api_key, base_url))
+            }
+            AppType::Hermes => {
+                // Hermes uses apiKey and baseUrl directly on the object
+                let api_key = provider
+                    .settings_config
+                    .get("apiKey")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        AppError::localized(
+                            "provider.hermes.api_key.missing",
                             "缺少 API Key",
                             "API key is missing",
                         )

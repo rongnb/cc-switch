@@ -179,6 +179,10 @@ pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
                 // OpenClaw doesn't support MCP, ignore silently
                 log::debug!("OpenClaw doesn't support MCP, ignoring in apps parameter");
             }
+            "hermes" => {
+                // Hermes doesn't support MCP, ignore silently
+                log::debug!("Hermes doesn't support MCP, ignoring in apps parameter");
+            }
             other => {
                 return Err(AppError::InvalidInput(format!(
                     "Invalid app in 'apps': {other}"

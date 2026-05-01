@@ -268,9 +268,9 @@ impl StreamCheckService {
                 )
                 .await
             }
-            AppType::OpenCode | AppType::OpenClaw => {
+            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
                 // Already handled via early dispatch above
-                unreachable!("OpenCode/OpenClaw 已通过 check_once_without_adapter 处理")
+                unreachable!("OpenCode/OpenClaw/Hermes 已通过 check_once_without_adapter 处理")
             }
         };
 
@@ -657,6 +657,16 @@ impl StreamCheckService {
                 )
                 .await
             }
+            AppType::Hermes => {
+                Self::check_hermes_stream(
+                    &client,
+                    provider,
+                    &model_to_test,
+                    test_prompt,
+                    request_timeout,
+                )
+                .await
+            }
             AppType::OpenCode => {
                 Self::check_opencode_stream(
                     &client,
@@ -667,7 +677,7 @@ impl StreamCheckService {
                 )
                 .await
             }
-            _ => unreachable!("check_once_without_adapter 只处理 OpenCode/OpenClaw"),
+            _ => unreachable!("check_once_without_adapter 只处理 OpenCode/OpenClaw/Hermes"),
         };
 
         let response_time = start.elapsed().as_millis() as u64;
@@ -936,6 +946,179 @@ impl StreamCheckService {
             .filter(|s| !s.is_empty())
     }
 
+    /// Hermes 流式检查分发器
+    ///
+    /// 根据 `settings_config.api` 字段分发到对应协议的检查器。
+    /// 取值参见 `hermesApiProtocols` (前端 hermesProviderPresets.ts):
+    /// - `openai-completions`   → check_claude_stream + api_format="openai_chat"
+    /// - `openai-responses`     → check_claude_stream + api_format="openai_responses"
+    /// - `anthropic-messages`   → check_claude_stream + api_format="anthropic" (ClaudeAuth 策略)
+    /// - `google-generative-ai` → check_gemini_stream (Google API Key 策略)
+    /// - `bedrock-converse-stream` → 不支持（需要 AWS SigV4 签名）
+    async fn check_hermes_stream(
+        client: &Client,
+        provider: &Provider,
+        model: &str,
+        test_prompt: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(u16, String), AppError> {
+        // 自定义认证头（如 Longcat 的 `apikey` 头）不走标准 Bearer，
+        // 具体头名由 Hermes 网关内部决定，cc-switch 无法准确构造，
+        // 因此直接返回友好错误而不是让用户看到一个误导性的 401。
+        if Self::hermes_uses_auth_header(provider) {
+            return Err(AppError::localized(
+                "hermes_auth_header_not_supported",
+                "该供应商使用自定义认证头，暂不支持流式健康检查。建议直接通过 Hermes 测试。",
+                "This provider uses a custom auth header; stream health check is not supported. Please test it directly via Hermes.",
+            ));
+        }
+
+        let base_url = Self::extract_hermes_base_url(provider)?;
+        let api_key = Self::extract_hermes_api_key(provider)?;
+        let api = Self::extract_hermes_protocol(provider);
+        let extra_headers = Self::extract_hermes_headers(provider);
+
+        match api.as_deref() {
+            Some("openai-completions") => {
+                let auth = AuthInfo::new(api_key, AuthStrategy::Bearer);
+                Self::check_claude_stream(
+                    client,
+                    &base_url,
+                    &auth,
+                    model,
+                    test_prompt,
+                    timeout,
+                    provider,
+                    Some("openai_chat"),
+                    extra_headers,
+                )
+                .await
+            }
+            Some("openai-responses") => {
+                let auth = AuthInfo::new(api_key, AuthStrategy::Bearer);
+                Self::check_claude_stream(
+                    client,
+                    &base_url,
+                    &auth,
+                    model,
+                    test_prompt,
+                    timeout,
+                    provider,
+                    Some("openai_responses"),
+                    extra_headers,
+                )
+                .await
+            }
+            Some("anthropic-messages") => {
+                // 使用 ClaudeAuth（Bearer-only）以兼容 Claude 中转服务。
+                // 某些中转同时收到 Authorization 和 x-api-key 会报错，ClaudeAuth
+                // 策略保证只下发 Bearer。官方 Anthropic 也接受纯 Bearer。
+                let auth = AuthInfo::new(api_key, AuthStrategy::ClaudeAuth);
+                Self::check_claude_stream(
+                    client,
+                    &base_url,
+                    &auth,
+                    model,
+                    test_prompt,
+                    timeout,
+                    provider,
+                    Some("anthropic"),
+                    extra_headers,
+                )
+                .await
+            }
+            Some("google-generative-ai") => {
+                let auth = AuthInfo::new(api_key, AuthStrategy::Google);
+                Self::check_gemini_stream(
+                    client,
+                    &base_url,
+                    &auth,
+                    model,
+                    test_prompt,
+                    timeout,
+                    extra_headers,
+                )
+                .await
+            }
+            Some("bedrock-converse-stream") => Err(AppError::localized(
+                "hermes_bedrock_not_supported",
+                "AWS Bedrock 需要 SigV4 签名，当前不支持健康检查。请通过 AWS 控制台或 Hermes 验证连通性。",
+                "AWS Bedrock requires SigV4 signing and is not supported by stream health check. Please verify connectivity via AWS console or Hermes.",
+            )),
+            Some(other) => Err(AppError::localized(
+                "hermes_protocol_not_yet_supported",
+                format!("Hermes 暂不支持协议: {other}"),
+                format!("Hermes protocol not yet supported: {other}"),
+            )),
+            None => Err(AppError::localized(
+                "hermes_protocol_missing",
+                "Hermes 供应商缺少 api 字段",
+                "Hermes provider is missing the `api` field",
+            )),
+        }
+    }
+
+    /// 判断 Hermes 供应商是否使用自定义认证头（`authHeader: true`）
+    fn hermes_uses_auth_header(provider: &Provider) -> bool {
+        provider
+            .settings_config
+            .get("authHeader")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
+    /// 提取 Hermes 供应商的自定义 headers（来自 `settings_config.headers`）
+    fn extract_hermes_headers(
+        provider: &Provider,
+    ) -> Option<&serde_json::Map<String, serde_json::Value>> {
+        provider
+            .settings_config
+            .get("headers")
+            .and_then(|v| v.as_object())
+            .filter(|m| !m.is_empty())
+    }
+
+    fn extract_hermes_base_url(provider: &Provider) -> Result<String, AppError> {
+        provider
+            .settings_config
+            .get("baseUrl")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                AppError::localized(
+                    "hermes_base_url_missing",
+                    "Hermes 供应商缺少 baseUrl",
+                    "Hermes provider is missing `baseUrl`",
+                )
+            })
+    }
+
+    fn extract_hermes_api_key(provider: &Provider) -> Result<String, AppError> {
+        provider
+            .settings_config
+            .get("apiKey")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                AppError::localized(
+                    "hermes_api_key_missing",
+                    "Hermes 供应商缺少 apiKey",
+                    "Hermes provider is missing `apiKey`",
+                )
+            })
+    }
+
+    fn extract_hermes_protocol(provider: &Provider) -> Option<String> {
+        provider
+            .settings_config
+            .get("api")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
     /// OpenCode 流式检查分发器
     ///
     /// OpenCode 用 `npm` 字段（AI SDK 包名）隐式指定协议。映射关系参见
@@ -993,7 +1176,7 @@ impl StreamCheckService {
                 .await
             }
             Some("@ai-sdk/anthropic") => {
-                // 见 check_openclaw_stream 对 anthropic-messages 的注释：
+                // 见 check_openclaw_stream/check_hermes_stream 对 anthropic-messages 的注释：
                 // 用 ClaudeAuth（Bearer-only）兼容中转服务。
                 let auth = AuthInfo::new(api_key, AuthStrategy::ClaudeAuth);
                 Self::check_claude_stream(
@@ -1213,6 +1396,11 @@ impl StreamCheckService {
                 // Try to extract first model from the models array
                 Self::extract_openclaw_model(provider).unwrap_or_else(|| "gpt-4o".to_string())
             }
+            AppType::Hermes => {
+                // Hermes uses models array in settings_config
+                // Try to extract first model from the models array
+                Self::extract_hermes_model(provider).unwrap_or_else(|| "gpt-4o".to_string())
+            }
         }
     }
 
@@ -1228,6 +1416,21 @@ impl StreamCheckService {
 
     fn extract_openclaw_model(provider: &Provider) -> Option<String> {
         // OpenClaw uses models array: [{ "id": "model-id", "name": "Model Name" }]
+        let models = provider
+            .settings_config
+            .get("models")
+            .and_then(|m| m.as_array())?;
+
+        // Return the first model ID from the models array
+        models
+            .first()
+            .and_then(|m| m.get("id"))
+            .and_then(|id| id.as_str())
+            .map(|s| s.to_string())
+    }
+
+    fn extract_hermes_model(provider: &Provider) -> Option<String> {
+        // Hermes uses models array: [{ "id": "model-id", "name": "Model Name" }]
         let models = provider
             .settings_config
             .get("models")

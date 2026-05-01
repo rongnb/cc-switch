@@ -912,15 +912,20 @@ pub fn set_tools_config(tools: &OpenClawToolsConfig) -> Result<OpenClawWriteOutc
 }
 
 #[cfg(test)]
+pub(crate) fn shared_test_home_lock() -> std::sync::MutexGuard<'static, ()> {
+    use std::sync::{Mutex, OnceLock};
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
 
     fn test_guard() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
+        shared_test_home_lock()
     }
 
     fn with_test_paths<T>(source: &str, test: impl FnOnce(&Path) -> T) -> T {

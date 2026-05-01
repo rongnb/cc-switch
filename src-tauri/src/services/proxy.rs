@@ -283,9 +283,10 @@ impl ProxyService {
             .await
             .map(|c| c.enabled)
             .unwrap_or(false);
-        // OpenCode and OpenClaw don't support proxy features, always return false
+        // OpenCode, OpenClaw, and Hermes don't support proxy features, always return false
         let opencode_enabled = false;
         let openclaw_enabled = false;
+        let hermes_enabled = false;
 
         Ok(ProxyTakeoverStatus {
             claude: claude_enabled,
@@ -293,6 +294,7 @@ impl ProxyService {
             gemini: gemini_enabled,
             opencode: opencode_enabled,
             openclaw: openclaw_enabled,
+            hermes: hermes_enabled,
         })
     }
 
@@ -473,6 +475,10 @@ impl ProxyService {
             AppType::OpenClaw => {
                 // OpenClaw doesn't support proxy features
                 return Err("OpenClaw 不支持代理功能".to_string());
+            }
+            AppType::Hermes => {
+                // Hermes doesn't support proxy features
+                return Err("Hermes 不支持代理功能".to_string());
             }
         };
 
@@ -693,6 +699,9 @@ impl ProxyService {
             AppType::OpenClaw => {
                 // OpenClaw doesn't support proxy features, skip silently
             }
+            AppType::Hermes => {
+                // Hermes doesn't support proxy features, skip silently
+            }
         }
 
         Ok(())
@@ -879,6 +888,10 @@ impl ProxyService {
                 // OpenClaw doesn't support proxy features
                 return Err("OpenClaw 不支持代理功能".to_string());
             }
+            AppType::Hermes => {
+                // Hermes doesn't support proxy features
+                return Err("Hermes 不支持代理功能".to_string());
+            }
         };
 
         let json_str = serde_json::to_string(&config)
@@ -1027,6 +1040,10 @@ impl ProxyService {
                 // OpenClaw doesn't support proxy features
                 return Err("OpenClaw 不支持代理功能".to_string());
             }
+            AppType::Hermes => {
+                // Hermes doesn't support proxy features
+                return Err("Hermes 不支持代理功能".to_string());
+            }
         }
 
         Ok(())
@@ -1082,6 +1099,9 @@ impl ProxyService {
             AppType::OpenClaw => {
                 // OpenClaw doesn't support proxy features, skip silently
             }
+            AppType::Hermes => {
+                // Hermes doesn't support proxy features, skip silently
+            }
         }
 
         Ok(())
@@ -1124,6 +1144,9 @@ impl ProxyService {
             }
             AppType::OpenClaw => {
                 // OpenClaw doesn't support proxy features, skip silently
+            }
+            AppType::Hermes => {
+                // Hermes doesn't support proxy features, skip silently
             }
         }
 
@@ -1221,6 +1244,10 @@ impl ProxyService {
                 // OpenClaw doesn't support proxy features
                 Err("OpenClaw 不支持代理功能".to_string())
             }
+            AppType::Hermes => {
+                // Hermes doesn't support proxy features
+                Err("Hermes 不支持代理功能".to_string())
+            }
         }
     }
 
@@ -1244,6 +1271,10 @@ impl ProxyService {
             }
             AppType::OpenClaw => {
                 // OpenClaw doesn't support proxy takeover
+                false
+            }
+            AppType::Hermes => {
+                // Hermes doesn't support proxy takeover
                 false
             }
         }
@@ -1291,6 +1322,10 @@ impl ProxyService {
             }
             AppType::OpenClaw => {
                 // OpenClaw doesn't support proxy features
+                Ok(())
+            }
+            AppType::Hermes => {
+                // Hermes doesn't support proxy features
                 Ok(())
             }
         }
@@ -1540,7 +1575,7 @@ impl ProxyService {
                 serde_json::to_string(&env_backup)
                     .map_err(|e| format!("序列化 Gemini 配置失败: {e}"))?
             }
-            AppType::OpenCode | AppType::OpenClaw => {
+            AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
                 return Err(format!("未知的应用类型: {app_type}"));
             }
         };

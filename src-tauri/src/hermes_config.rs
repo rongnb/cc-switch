@@ -914,13 +914,9 @@ pub fn set_tools_config(tools: &HermesToolsConfig) -> Result<HermesWriteOutcome,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
 
     fn test_guard() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
+        crate::openclaw_config::shared_test_home_lock()
     }
 
     fn with_test_paths<T>(source: &str, test: impl FnOnce(&Path) -> T) -> T {

@@ -497,4 +497,5 @@ pub fn get_opencode_live_provider_ids() -> Result<Vec<String>, String> {
 
 // ============================================================================
 // OpenClaw 专属命令 → 已迁移至 commands/openclaw.rs
+// Hermes 专属命令 → 已迁移至 commands/hermes.rs
 // ============================================================================
